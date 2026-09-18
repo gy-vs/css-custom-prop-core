@@ -451,4 +451,60 @@ test('supports subclasses with overridden traversal methods', () => {
   is(result, css)
 })
 
+test('preserves hack-prefixed declarations followed by comments', () => {
+  // `*` and `_` are stripped from `prop` into `raws.before` while other
+  // prefixes stay part of `prop`. Every variant must round-trip verbatim.
+  let prefixes = ['', '*', '_', '+', '#', '>', '&', '~']
+  let props = ['--custom', 'color']
+  for (let prefix of prefixes) {
+    for (let prop of props) {
+      let css = `a { ${prefix}${prop}: red /* note */ }`
+      is(parse(css).toString(), css, `${prefix}${prop} inside a rule`)
+    }
+  }
+})
+
+test('preserves hack-prefixed custom properties at the end of input', () => {
+  for (let prefix of ['*', '_', '+', '#', '>', '&', '~']) {
+    let css = `${prefix}--custom: red /* note */`
+    is(parse(css).toString(), css, `${prefix}--custom at root EOF`)
+  }
+})
+
+test('preserves hack-prefixed custom properties with a following sibling', () => {
+  for (let prefix of ['', '*', '_', '+']) {
+    let css = `a {\n  ${prefix}--custom: red /* note */;\n  color: blue\n}`
+    is(parse(css).toString(), css, `${prefix}--custom with sibling`)
+  }
+})
+
+test('preserves hack-prefixed regular properties with a following sibling', () => {
+  for (let prefix of ['*', '_', '+']) {
+    let css = `a {\n  ${prefix}color: red /* note */;\n  color: blue\n}`
+    is(parse(css).toString(), css, `${prefix}color with sibling`)
+  }
+})
+
+test('still terminates hack-prefixed custom properties before inserted comments', () => {
+  // Mirrors the existing `--x` behavior when a comment node is appended:
+  // the semicolon is required so the comment is not folded into the value.
+  for (let prefix of ['*', '_']) {
+    let css = parse(`a{${prefix}--x:red}`)
+    css.first.append(new Comment({ text: 'note' }))
+    is(css.toString(), `a{${prefix}--x:red;/* note */}`)
+    is(
+      parse(css.toString())
+        .first.nodes.map(i => i.type)
+        .join(','),
+      'decl,comment'
+    )
+  }
+})
+
+test('allows plugins to change values of hack-prefixed custom properties', () => {
+  let css = parse('a { *--x: red /* note */ }')
+  css.first.first.value = 'blue'
+  is(css.toString(), 'a { *--x: blue}')
+})
+
 test.run()
